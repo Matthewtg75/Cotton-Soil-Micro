@@ -1,0 +1,12 @@
+nextflow run nf-core/ampliseq \
+    -r 2.3.2 \
+    -profile singularity \
+    --input './samplesheet_16S_Carly.tsv' \
+    --FW_primer GTGYCAGCMGCCGCGGTAA \
+    --RV_primer GGACTACNVGGGTWTCTAAT \
+    --metadata "./metadata_16S_Carly_April20.txt" \
+    --outdir "./nextflow_dir_2" \
+    --ignore_empty_input_files \
+    --retain_untrimmed \
+    --qiime_ref_taxonomy: silva=138 \
+    --qiime_adonis_formula "Treatment*Soil_P_category"
