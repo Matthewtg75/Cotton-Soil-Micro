@@ -1,1 +1,49 @@
-some text
+---
+title: "Cotton fields soil microbiome Project"
+author: "Matthew Gillis and Pedro Rodrigues"
+output:
+  BiocStyle::html_document:
+    toc: true
+    toc_depth: 3
+    fig_caption: yes
+
+fontsize: 14pt
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+```{r init, warning=FALSE, message=FALSE}
+setwd("/Users/pedro/Documents/GitHub/Cotton-Soil-Micro/")
+set.seed("12345678")
+library(dada2);packageVersion("dada2") # 1.30.0
+library(Biostrings); packageVersion("Biostrings") # 2.70.3
+library(rmarkdown); packageVersion("rmarkdown") # 2.26
+library(tidyverse); packageVersion("tidyverse") # 2.0.0
+```
+
+```{r more preparation, warning=FALSE, message=FALSE}
+path.out <- "Results/Figures/"
+path.rds <- "RDS/"
+theme_set(theme_bw())
+```
+
+Load Data (quality-trimmed and denoised using DADA2 and the nf-core/ampliseq pipeline)
+
+```{r phyloseq-load-improved-data, eval=FALSE}
+p_data.chimera_free <- readRDS("DADA2_table.rds")
+```
+
+```{r assign taxonomy, eval=FALSE}
+# Assign taxonomy
+tax <- assignTaxonomy(p_data.chimera_free, "./rdp_train_set_18.fa.gz", minBoot = 80, tryRC = TRUE, multithread=TRUE) # Slowest part
+head(unname(tax))
+tax <- addSpecies(tax, "./rdp_species_assignment_18.fa.gz")
+```
+
+```{r save-progress-taxonomy, eval=FALSE}
+# Write to disk
+saveRDS(tax, "RDS/tax_hoverflies.rds")
+saveRDS(p_data.chimera_free, "RDS/DADA2_table.rds")
+```
