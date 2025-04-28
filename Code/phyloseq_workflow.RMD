@@ -18,6 +18,7 @@ knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
 setwd("/Users/pedro/Documents/GitHub/Cotton-Soil-Micro/")
 set.seed("12345678")
 library(dada2);packageVersion("dada2") # 1.30.0
+library(phyloseq);packageVersion("phyloseq") # 1.46.0
 library(Biostrings); packageVersion("Biostrings") # 2.70.3
 library(rmarkdown); packageVersion("rmarkdown") # 2.26
 library(tidyverse); packageVersion("tidyverse") # 2.0.0
@@ -32,18 +33,100 @@ theme_set(theme_bw())
 Load Data (quality-trimmed and denoised using DADA2 and the nf-core/ampliseq pipeline)
 
 ```{r phyloseq-load-improved-data, eval=FALSE}
-p_data.chimera_free <- readRDS("DADA2_table.rds")
+p_data.chimera_free <- readRDS("../Input/RDS/DADA2_table.rds")
 ```
 
 ```{r assign taxonomy, eval=FALSE}
 # Assign taxonomy
-tax <- assignTaxonomy(p_data.chimera_free, "./rdp_train_set_18.fa.gz", minBoot = 80, tryRC = TRUE, multithread=TRUE) # Slowest part
+tax <- assignTaxonomy(p_data.chimera_free, "../Input/rdp_19_toGenus_trainset.fa.gz", minBoot = 80, tryRC = TRUE, multithread=TRUE) # Slowest part
 head(unname(tax))
-tax <- addSpecies(tax, "./rdp_species_assignment_18.fa.gz")
+tax <- addSpecies(tax, "../Input/rdp_species_assignment_18.fa.gz")
 ```
 
 ```{r save-progress-taxonomy, eval=FALSE}
 # Write to disk
-saveRDS(tax, "RDS/tax_hoverflies.rds")
-saveRDS(p_data.chimera_free, "RDS/DADA2_table.rds")
+saveRDS(tax, "../Input/RDS/tax_soilmicrobes.rds")
 ```
+
+Make Phyloseq object
+
+```{r phyloseq-load-data, eval=FALSE}
+p_data.chimera_free <- readRDS("../Input/RDS/DADA2_table.rds")
+tax <- readRDS("../Input/RDS/tax_soilmicrobes.rds")
+metadata <- read.table("../Input/metadata_matthew.txt", sep = "\t", header = TRUE)
+samples.out <- data.frame(old_ID = rownames(p_data.chimera_free))
+samples_out <- samples.out %>% separate_wider_delim(old_ID,delim ="_1.f", names = c("ID", "suffix"), cols_remove = FALSE)
+metadata_merge <- left_join(metadata, samples_out, by = "ID")
+row.names(metadata_merge) <- metadata_merge[,6]
+```
+
+```{r backup-data, eval=FALSE}
+write_tsv(metadata_merge, "../Input/metadataPhyloseqFormatted.tsv")
+```
+
+
+```{r phyloseq-make-object-1, eval=FALSE}
+p_data <- phyloseq(otu_table(p_data.chimera_free, taxa_are_rows = FALSE),
+                   sample_data(metadata_merge),
+                   tax_table(tax))
+```
+
+Store DNA sequences in a different slot and simplify ASV names
+
+```{r phyloseq-format-data, eval=FALSE}
+dna <- Biostrings::DNAStringSet(taxa_names(p_data))
+names(dna) <- taxa_names(p_data)
+p_data <- merge_phyloseq(p_data, dna)
+taxa_names(p_data) <- paste0("ASV", seq(ntaxa(p_data)))
+p_data
+```
+
+Investigate taxa in the dataset - how many samples are not bacteria?
+
+```{r summarize-no-bacteria, eval=FALSE}
+p_data
+p_data %>%
+  subset_taxa(Kingdom!="Bacteria") %>%
+  tax_table() %>% as.data.frame() %>% group_by(Class) %>% tally()
+```
+
+One Plant taxa, and thirty-two Archaea.
+
+How many identified and unidentified ASV at the Phylum and Class levels?
+
+```{r summarize-no-bacteria-phylum-class, eval=FALSE}
+p_data
+p_data %>%
+  tax_table() %>% as.data.frame() %>% group_by(Phylum, Class) %>% tally() %>% paged_table()
+```
+
+A few NA. Let's exclude obvious contaminants before saving sequences as a fasta file and using Blast to (hopefully) get higher definition for taxa currently classified as "NA".
+
+First, I will make data easier to work with, by transforming the phyloseq object into a summary table.
+
+```{r relative-abundance-dada2-processed-data-and-taxonomy, eval=FALSE}
+pdata_df <- p_data %>% psmelt() %>% arrange(OTU) %>% dplyr::rename(ASV = OTU) %>% spread(Sample, Abundance)
+```
+
+Let's remove chloroplasts, plant DNA and other taxa that may not be relevant here.
+
+```{r remove-chloroplast--plants-archaea, eval=FALSE}
+p_data_taxlean <- p_data %>% subset_taxa(Kingdom != "Archaea") %>% subset_taxa((Order != "Chloroplast") | is.na(Order)) %>% subset_taxa((Kingdom != "Eukaryota") | is.na(Kingdom)) %>% subset_taxa((Class != "Cyanobacteria") | is.na(Order)) %>% subset_samples(sample_sums(p_data) > 0)
+```
+
+Save taxonomy table and ASV fasta and blast unknown sequences to increase accuracy of classification
+
+```{r save-taxonomy-table, eval=FALSE}
+p_data_taxlean %>%
+  tax_table() %>%
+  write.csv("./MG_asv_04_2025.csv")
+```
+
+```{r save-sequences-fasta, eval=FALSE}
+p_data_taxlean %>%
+      refseq() %>%
+      Biostrings::writeXStringSet("./MG_asv_04_2025.fasta", append=FALSE,
+                                  compress=FALSE, compression_level=NA, format="fasta")
+```
+
+Blast was run using the script "blast_ASV_syrphid.sh", and taxonomixal ranks were added to the output file ("0203205_nt_blast_syrphid.tsv") using the script "Get_lineage_blast.sh". The resulting spreadsheet was saved as "syr16S_annotated_ASV_nt_blast.csv". Next, I will identify "NA" sequences that were resolved by blast, and manually inspect their identification and eliminate any spurious results (e.g. annotations containing mistakes, non-taxonomical attributions, etc).
