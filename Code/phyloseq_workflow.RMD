@@ -119,13 +119,13 @@ Save taxonomy table and ASV fasta and blast unknown sequences to increase accura
 ```{r save-taxonomy-table, eval=FALSE}
 p_data_taxlean %>%
   tax_table() %>%
-  write.csv("./MG_asv_04_2025.csv")
+  write.csv("../Results/MG_asv_04_2025.csv")
 ```
 
 ```{r save-sequences-fasta, eval=FALSE}
 p_data_taxlean %>%
       refseq() %>%
-      Biostrings::writeXStringSet("./MG_asv_04_2025.fasta", append=FALSE,
+      Biostrings::writeXStringSet("../Results/MG_asv_04_2025.fasta", append=FALSE,
                                   compress=FALSE, compression_level=NA, format="fasta")
 ```
 
