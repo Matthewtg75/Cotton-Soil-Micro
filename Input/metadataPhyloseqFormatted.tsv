@@ -1,23 +1,23 @@
-ID	Sample_type	Irrigation	Tillage	suffix	old_ID
-gillis_15	sample	I	C	ilt.fastq.gz	gillis_15_1.filt.fastq.gz
-gillis_10	sample	I	C	ilt.fastq.gz	gillis_10_1.filt.fastq.gz
-gillis_16	sample	D	C	ilt.fastq.gz	gillis_16_1.filt.fastq.gz
-gillis_1	sample	I	R	ilt.fastq.gz	gillis_1_1.filt.fastq.gz
-gillis_2	sample	D	R	ilt.fastq.gz	gillis_2_1.filt.fastq.gz
-gillis_C1	control	NA	NA	ilt.fastq.gz	gillis_C1_1.filt.fastq.gz
-gillis_4	sample	D	R	ilt.fastq.gz	gillis_4_1.filt.fastq.gz
-gillis_11	sample	I	C	ilt.fastq.gz	gillis_11_1.filt.fastq.gz
-gillis_20	sample	I	R	ilt.fastq.gz	gillis_20_1.filt.fastq.gz
-gillis_3	sample	D	C	ilt.fastq.gz	gillis_3_1.filt.fastq.gz
-gillis_19	sample	I	C	ilt.fastq.gz	gillis_19_1.filt.fastq.gz
-gillis_C2	control	NA	NA	ilt.fastq.gz	gillis_C2_1.filt.fastq.gz
-gillis_13	sample	I	R	ilt.fastq.gz	gillis_13_1.filt.fastq.gz
-gillis_12	sample	D	R	ilt.fastq.gz	gillis_12_1.filt.fastq.gz
-gillis_8	sample	D	C	ilt.fastq.gz	gillis_8_1.filt.fastq.gz
-gillis_9	sample	I	R	ilt.fastq.gz	gillis_9_1.filt.fastq.gz
-gillis_7	sample	D	C	ilt.fastq.gz	gillis_7_1.filt.fastq.gz
-gillis_6	sample	D	R	ilt.fastq.gz	gillis_6_1.filt.fastq.gz
-gillis_14	sample	I	C	ilt.fastq.gz	gillis_14_1.filt.fastq.gz
-gillis_5	sample	I	R	ilt.fastq.gz	gillis_5_1.filt.fastq.gz
-gillis_17	sample	D	C	ilt.fastq.gz	gillis_17_1.filt.fastq.gz
-gillis_18	sample	D	R	ilt.fastq.gz	gillis_18_1.filt.fastq.gz
+ID	Sample_type	Irrigation	Tillage	suffix	old_ID	County
+gillis_15	sample	I	C	ilt.fastq.gz	gillis_15_1.filt.fastq.gz	Cook
+gillis_10	sample	I	C	ilt.fastq.gz	gillis_10_1.filt.fastq.gz	Worth
+gillis_16	sample	D	C	ilt.fastq.gz	gillis_16_1.filt.fastq.gz	Tift
+gillis_1	sample	I	R	ilt.fastq.gz	gillis_1_1.filt.fastq.gz	Tift
+gillis_2	sample	D	R	ilt.fastq.gz	gillis_2_1.filt.fastq.gz	Tift
+gillis_C1	control	NA	NA	ilt.fastq.gz	gillis_C1_1.filt.fastq.gz	NA
+gillis_4	sample	D	R	ilt.fastq.gz	gillis_4_1.filt.fastq.gz	Cook
+gillis_11	sample	I	C	ilt.fastq.gz	gillis_11_1.filt.fastq.gz	Colquitt
+gillis_20	sample	I	R	ilt.fastq.gz	gillis_20_1.filt.fastq.gz	Cook
+gillis_3	sample	D	C	ilt.fastq.gz	gillis_3_1.filt.fastq.gz	Worth
+gillis_19	sample	I	C	ilt.fastq.gz	gillis_19_1.filt.fastq.gz	Cook
+gillis_C2	control	NA	NA	ilt.fastq.gz	gillis_C2_1.filt.fastq.gz	NA
+gillis_13	sample	I	R	ilt.fastq.gz	gillis_13_1.filt.fastq.gz	Cook
+gillis_12	sample	D	R	ilt.fastq.gz	gillis_12_1.filt.fastq.gz	Cook
+gillis_8	sample	D	C	ilt.fastq.gz	gillis_8_1.filt.fastq.gz	Colquitt
+gillis_9	sample	I	R	ilt.fastq.gz	gillis_9_1.filt.fastq.gz	Tift
+gillis_7	sample	D	C	ilt.fastq.gz	gillis_7_1.filt.fastq.gz	Tift
+gillis_6	sample	D	R	ilt.fastq.gz	gillis_6_1.filt.fastq.gz	Tift
+gillis_14	sample	I	C	ilt.fastq.gz	gillis_14_1.filt.fastq.gz	Colquitt
+gillis_5	sample	I	R	ilt.fastq.gz	gillis_5_1.filt.fastq.gz	Cook
+gillis_17	sample	D	C	ilt.fastq.gz	gillis_17_1.filt.fastq.gz	Colquitt
+gillis_18	sample	D	R	ilt.fastq.gz	gillis_18_1.filt.fastq.gz	Colquitt
