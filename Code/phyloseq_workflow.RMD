@@ -129,4 +129,42 @@ p_data_taxlean %>%
                                   compress=FALSE, compression_level=NA, format="fasta")
 ```
 
-Blast was run using the script "blast_ASV_syrphid.sh", and taxonomixal ranks were added to the output file ("0203205_nt_blast_syrphid.tsv") using the script "Get_lineage_blast.sh". The resulting spreadsheet was saved as "syr16S_annotated_ASV_nt_blast.csv". Next, I will identify "NA" sequences that were resolved by blast, and manually inspect their identification and eliminate any spurious results (e.g. annotations containing mistakes, non-taxonomical attributions, etc).
+Blast was ran using the script "blast.sh", and taxonomical ranks were added to the output file ("28APR2025_nt_blast_MG.tsv") using the script "Get_lineage_blast.sh". The resulting spreadsheet was saved as "soil_16S_withtaxranks_ASV_nt_blast.csv". Next, I will identify "NA" sequences that were resolved by blast, and manually inspect their identification and eliminate any spurious results (e.g. annotations containing mistakes, non-taxonomical attributions, etc).
+
+```{r load taxonomical data}
+old_tax_table <- read.csv("../Results/MG_asv_04_2025.csv")
+blast_tax_table <- read.csv("../Results/blast_results/soil_16S_withtaxranks_ASV_nt_blast.csv")
+NA_old_tax_table <- old_tax_table %>% filter(is.na(Genus)) %>% 
+  rename("qseqid" = "X") #select only ASV with NA at the Genus level; rename ASV id column to match the corresponding blast column name
+NoNA_blast_tax_table <- blast_tax_table %>% filter(!is.na(genus)) # select blast results that resolved identification at the Genus level
+resolved_by_blast <- left_join(NA_old_tax_table, NoNA_blast_tax_table, by = "qseqid") %>% filter(!is.na(genus)) # combine both subset data sets, using the old tax table as the reference for rows to include, and qseqid as the column in common to allow the merge of these tables; next, exclude "genus" in blast results that were not resolved
+```
+
+Blast helped resolve the identification of 214 ASVs. Next, I will transfer all taxonomical levels for resolved genera from blast results to the "old_tax_table".
+
+```{r update taxonomy}
+# Prepare resolved_by_blast to be added to the final taxonomy file
+# Select only relevant columns
+resolved_by_blast_slim <- resolved_by_blast %>% select(c("qseqid", "kingdom", "phylum", "class", "order", "family", "genus", "species"))
+# Rename columns to match phyloseq tax table
+colnames(resolved_by_blast_slim) <- c("X", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+# Rename values in "Species" to eliminate characters that Phyloseq might not like
+resolved_by_blast_slim <- resolved_by_blast_slim %>% mutate(Species = paste ("sp"))
+# Use anti-join to eliminate from old_tax_table entries that overlap with the new results
+old_tax_table_slice <- anti_join(old_tax_table, resolved_by_blast_slim, by = "X")
+# Now join rows from both datasets into the final dataset
+updated_tax <- bind_rows(resolved_by_blast_slim, old_tax_table_slice)
+```
+
+For now this should be sufficient. Downstream, I will further improve taxonomy by replacing NA at the genus level with the next best taxonomical id followed by "sp" (e.g. "Pseudomonadaceae sp.", or "Bacteria sp.", etc).
+
+Add new taxonomy back to the phyloseq object
+
+```{r add-updated-taxonomy}
+#rename rows with ASV identifier
+row.names(updated_tax) <- updated_tax$X
+# remove first column
+updated_tax <- updated_tax[-1]
+new_tax <- tax_table(as.matrix(updated_tax))
+tax_table(p_data_taxlean) <- new_tax
+```
