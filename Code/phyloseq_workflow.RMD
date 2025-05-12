@@ -168,3 +168,1037 @@ updated_tax <- updated_tax[-1]
 new_tax <- tax_table(as.matrix(updated_tax))
 tax_table(p_data_taxlean) <- new_tax
 ```
+
+```{r what-taxa-is-there-2, eval=FALSE}
+updated_tax %>% select(Kingdom) %>% unique()
+updated_tax %>% select(Phylum) %>% unique()
+updated_tax %>% select(Class) %>% unique()
+updated_tax %>% select(Order) %>% unique()
+```
+
+Some taxa are classified as "bacteria" other have a different name for their respective Kingdom rank (but are still in the Bacteria domain). To make things consistent, we will rename all Kingdom as "Bacteria".
+
+```{r rename-Kingdom}
+new_tax2$Kingdom <- ifelse(new_tax2$Kingdom != "Bacteria", "Bacteria", new_tax2$Kingdom)
+new_tax2 <- tax_table(as.matrix(new_tax2))
+tax_table(p_data_taxlean) <- new_tax2
+```
+
+```{r save-updated_taxonomy, eval=FALSE}
+saveRDS(p_data_taxlean,"../Input/RDS/p_data_taxlean.rds")
+```
+
+```{r save-ASV-metadata-seq-table, eval=FALSE}
+write.table(p_data_taxlean %>% psmelt() %>% arrange(OTU) %>% 
+              dplyr::rename(ASV = OTU) %>% select(ASV, Kingdom, Phylum, Class, Order, Family, Genus, Sample, Abundance) %>% spread (Sample, Abundance), 
+    file = "../Results/soilmicrobes_taxclean.tsv", sep = "\t", quote = F, row.names = F, col.names = T)
+```
+
+
+## Decontam
+```{r decontam-eval-data}
+library(decontam)
+df <- as.data.frame(sample_data(p_data_taxlean))
+df$LibrarySize <- sample_sums(p_data_taxlean)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_type)) + geom_point()
+sample_data(p_data_taxlean)$is.neg <- sample_data(p_data_taxlean)$Sample_type == "control"
+
+# adopting prevalence method to identify contaminants based on controls
+# sensitivity set to low (threshold = 0.1)
+contamdf.prev.01 <- isContaminant(p_data_taxlean, method="prevalence", neg="is.neg")
+table(contamdf.prev.01$contaminant)
+contaminant.list <- which(contamdf.prev.01$contaminant)
+tax_table(p_data_taxlean)[contaminant.list,]
+
+# sensitivity set to high (threshold = 0.5)
+contamdf.prev.05 <- isContaminant(p_data_taxlean, method="prevalence", neg="is.neg", threshold = 0.5)
+table(contamdf.prev.05$contaminant)
+contaminant.list <- which(contamdf.prev.05$contaminant)
+tax_table(p_data_taxlean)[contaminant.list,]
+```
+
+We identified via PCR that some reagents (e.g. some primer-barcode combinations) were likely contaminated with plant DNA.
+Suspect contaminants such as Citrus only show up as contaminant when sensitivity is increased to 0.5.
+
+Let's inspect how contaminants prevalence is divided between control and samples
+
+```{r decontam-eval-distribution}
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p_data_taxlean, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_type == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_type == "sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+# for threshold=0.1
+df.pa1 <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev.01$contaminant)
+ggplot(data=df.pa1, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)") + ggtitle("Decontamination threshold=0.1")
+# for threshold=0.5
+df.pa5 <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev.05$contaminant)
+ggplot(data=df.pa5, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)") + ggtitle("Decontamination threshold=0.5")
+
+p_data.ord <- ordinate(p_data, "PCoA", "bray")
+plot_ordination(p_data, p_data.ord, type="sample", color="Sample_type", shape="Irrigation")+ geom_point(size=3)
+```
+
+Brevudimonas and Achromobacter are likely true members of the soil microbiome. Their ASV number also indicates that they are abundant in samples, but not as abundant in the controls. ASV2617 (Pseudomonas), on the other hand, seems to be generally less abundant overall and, perhaps, a contaminant coming from reagents or the environment during extractions. To be conservative, we will keep Brevudimonas and Achromobacter and only exclude the more clear candidate contaminant, ASV 2617.
+
+
+```{r decontam-clean-data}
+TaxaRemove = "ASV2617"
+TaxaKeep <- setdiff(taxa_names(p_data_taxlean), TaxaRemove)
+p_data.clean <- prune_taxa(TaxaKeep, p_data_taxlean)
+p_data_taxlean
+p_data.clean
+
+# Remove control samples from analysis
+p_data.clean <-subset_samples(p_data.clean, Sample_type!="control")
+# Remove samples with zero ASV (zero column sums)
+p_data.clean <- subset_samples(p_data.clean, sample_sums(p_data.clean) > 0)
+```
+
+
+Save progress
+```{r save-decontam, eval=FALSE}
+saveRDS(p_data.clean,"../Input/RDS/p_data.clean.rds")
+```
+
+```{r save-ASV-metadata-seq-table-decontam, eval=FALSE}
+write.table(p_data.clean %>% psmelt() %>% arrange(OTU) %>% 
+              dplyr::rename(ASV = OTU) %>% select(ASV, Kingdom, Phylum, Class, Order, Family, Genus, Sample, Abundance) %>% spread (Sample, Abundance), 
+    file = "../Results/soilmicrobes_after_decontam.tsv", sep = "\t", quote = F, row.names = F, col.names = T)
+```
+
+----------------
+#Stats and Plots
+----------------
+
+```{r load-more-packages}
+library(microbiome)
+library(ggpubr)
+library(knitr)
+library(ggtext)
+library(scales)
+library(ggside)
+library(RColorBrewer)
+#devtools::install_github("vmikk/metagMisc")
+library(metagMisc)
+```
+
+First step is to rarefy data to account for differences in sequencing depth by sample.
+
+For rarefying data, I will use phyloseq_mult_rare_avg, that will subsample samples 1000 times and average the number of times ASVs are observed in each sample according to the threshold I will establish below
+
+```{r thresholds-rarefy-data, eval=FALSE}
+sample_size_quantile <- as.data.frame(quantile(sample_sums(p_data.clean), probs = c(0, 0.10, 0.15, 0.225, 0.25, 0.5, 0.75, 1)))
+sample_size_quantile["10%", ] # 12321.6 reads
+sample_size_quantile["25%", ] # 13716.25 reads
+sample_size_quantile["50%", ] # 16868.5 reads
+sample_size_quantile["75%", ] # 19450.75 reads
+```
+
+Samples that would be lost with some of these thresholds
+
+```{r samples-lost}
+sample_loss <- as.data.frame(sample_sums(p_data.clean))
+names(sample_loss) <- "Sample_size"
+data.frame(Quantile_cutoff = c("no cutoff", "10%", "25%", "50%", "75%"), Samples_left = c(nrow(sample_loss), nrow(filter(sample_loss, Sample_size > 12321.6)), nrow(filter(sample_loss, Sample_size > 13716.25)), nrow(filter(sample_loss, Sample_size > 16868.5)), nrow(filter(sample_loss, Sample_size > 19450.75))))
+```
+What two samples do we lose if we were to use 10% as our cutoff?
+
+```{r ten-percent-cutoff}
+sample_loss %>% filter(Sample_size < 12321.6) #10 percent
+sample_loss %>% filter(Sample_size < 13716.25) #25 percent
+```
+
+Both two samples lost if threshold is ten percent were from the same treatment (reduced drought). However one of them is closer to the cutoff than the other. We will choose 11940 as our cutoff, since lowering the cutoff to include sample gillis_18 would still keep enough reads/sample after rarefaction.
+
+```{r rarefy-samples}
+pdata_rr <- phyloseq_mult_raref_avg(p_data.clean, SampSize = 11940, iter=1000, parallel = TRUE,verbose = TRUE)
+
+pdata_rr <- transform_sample_counts(pdata_rr, function(x){ x * 11940})
+```
+
+One interesting (but expected) result from rarefying data: keeping Wolbachia, and more samples, but rarefying at a higher threshold resulted in fewer taxa (381) than removing Wolbachia, but using a smaller rarefaction cutoff for samples size (1021 sequences, 401 taxa kept).
+
+The phyloseq_mult_raref_avg function removes the "Refseq" component of the phyloseq object. I will put it back to each object (Wolb and NoWolb), so that it can be used in downstream analysis
+
+```{r add-back-sequences}
+Wotu_table <- t(as(otu_table(Wolb_rr), "matrix"))
+asv_ids <- colnames(Wotu_table)
+refseq_phyloseq <- refseq(p_data_taxlean)
+refseq_phyloseq_W <- refseq_phyloseq[names(refseq_phyloseq) %in% asv_ids]
+Wolb_rr_up <- merge_phyloseq(Wolb_rr, refseq_phyloseq_W)
+NoWotu_table <- t(as(otu_table(NoWolb_rr), "matrix"))
+asv_ids <- colnames(NoWotu_table)
+refseq_phyloseq_NoW <- refseq_phyloseq[names(refseq_phyloseq) %in% asv_ids]
+NoWolb_rr_up <- merge_phyloseq(NoWolb_rr, refseq_phyloseq_NoW)
+```
+
+
+Next, let's test two hypothesis:
+(1) That microbial communities are different between _Allograpta_ and _Eupeodes_ _americanus_
+(2) That microbial communities are different between North and South populations for *non-migratory* hoverflies ( _Allograpta_ ), but more similar between North and South populations for *migratory* hoverflies ( _Eupeodes_ ) 
+
+To test these hypotheses, I will use a Permanova test. One assumption of Permanova is that there is homogeneity of dispersion between groups.
+For hypothesis "1", host species is the grouping variable, and for the second hypothesis, for each species, region of sampling (north vs south) is the grouping variable.
+
+
+```{r betadisper}
+library("vegan")
+# Extract OTU table from phyloseq object, calculate Bray-Curtis distances, and calculate beta dispersion
+# 1. For Wolb_rr_up; first, exclude Eupeodes pomus from the dataset (only one species)
+Wolb_rr_up_filt <- Wolb_rr_up %>% subset_samples(Species != "Eupeodes pomus")
+otu_table <- t(as(otu_table(Wolb_rr_up_filt), "matrix"))
+Wolb_bray_dist <- vegdist(otu_table, method = "bray")
+metadata_Wolb_rr_up_filt <- data.frame(sample_data(Wolb_rr_up_filt))
+disper_SpID <- betadisper(Wolb_bray_dist, metadata_Wolb_rr_up_filt$Species)
+
+# Test if dispersion between groups is significant
+anova(disper_SpID) # P-value VERY significant (P<0.00000001); data is overdispersed
+
+# 2. For NoWolb_rr_up
+NoWolb_rr_up_filt <- NoWolb_rr_up %>% subset_samples(Species != "Eupeodes pomus")
+otu_table <- t(as(otu_table(NoWolb_rr_up_filt), "matrix"))
+NoWolb_bray_dist <- vegdist(otu_table, method = "bray")
+metadata_NoWolb_rr_up_filt <- data.frame(sample_data(NoWolb_rr_up_filt))
+disper_SpID <- betadisper(NoWolb_bray_dist, metadata_NoWolb_rr_up_filt$Species)
+
+# Test if dispersion between groups is significant
+anova(disper_SpID) # p > 0.05, data is not overdispersed, so we can use bray distances for the data with Wolbachia removed
+```
+
+Homogeneity of dispersion is not met for the Wolbachia-present dataset. I will try to use Unifrac distances, but first I need to build a phylogenetic tree. I will also calculate Unifrac distances for the Wolbachia-absent dataset, in case needed for downstream analyses.
+
+1. Build tree and calculate unifrac distances
+```{r UniFrac-distances}
+library(phangorn)
+library(DECIPHER)
+library(GUniFrac)
+# Wolb_rr_up
+refseq_phyloseq_W_filt <- refseq(Wolb_rr_up_filt)
+alignment <- AlignSeqs(refseq_phyloseq_W_filt, anchor=NA)
+phangAlign <- phyDat(as(alignment, "matrix"), type="DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm)
+mod.test <- modelTest(phangAlign) 
+mod.test$Model[mod.test$AIC==min(mod.test$AIC)] #this gives GTR+G(4)+I as the best model, i.e. the model with the smallest AIC (or BIC) result
+fit = pml(treeNJ, data=phangAlign)
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR <- optim.pml(fitGTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+        rearrangement = "stochastic", control = pml.control(trace = 0)) #this may take 15-20 min
+rooted_fitGTR_tree <- midpoint(fitGTR$tree)
+#detach("package:phangorn", unload=TRUE)
+Wolb_rr_up_phytree <- merge_phyloseq(Wolb_rr_up_filt, rooted_fitGTR_tree)
+
+
+# NoWolb_rr_up
+refseq_phyloseq_NoW_filt <- refseq(NoWolb_rr_up_filt)
+alignment <- AlignSeqs(refseq_phyloseq_NoW_filt, anchor=NA)
+phangAlign <- phyDat(as(alignment, "matrix"), type="DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm)
+mod.test <- modelTest(phangAlign) 
+mod.test$Model[mod.test$AIC==min(mod.test$AIC)] #this gives GTR+G(4)+I as the best model, i.e. the model with the smallest AIC (or BIC) result
+fit = pml(treeNJ, data=phangAlign)
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR <- optim.pml(fitGTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+        rearrangement = "stochastic", control = pml.control(trace = 0)) #this may take 15-20 min
+rooted_fitGTR_tree <- midpoint(fitGTR$tree)
+#detach("package:phangorn", unload=TRUE)
+NoWolb_rr_up_phytree <- merge_phyloseq(NoWolb_rr_up_filt, rooted_fitGTR_tree)
+```
+
+2. Next, I calculate if data is still over dispersed using betadisper
+```{r betadisper-UniFrac}
+# Wolb
+metadata <- data.frame(sample_data(Wolb_rr_up_phytree))
+unifracs = GUniFrac::GUniFrac(t(as(otu_table(Wolb_rr_up_phytree), "matrix")), phy_tree(Wolb_rr_up_phytree), alpha = c(0, 0.5, 1))$unifracs
+Wolb_unifrac_distUW <- as.dist(unifracs[, , "d_UW"])
+Wolb_unifrac_dist_d_1 <- as.dist(unifracs[, , "d_1"])
+Wolb_unifrac_dist_d_05 <- as.dist(unifracs[, , "d_0.5"])
+Wolb_unifrac_betadisperUW <- betadisper(Wolb_unifrac_distUW, metadata$Species) 
+anova(Wolb_unifrac_betadisperUW)
+Wolb_unifrac_betadisper_d_1 <- betadisper(Wolb_unifrac_dist_d_1, metadata$Species) 
+anova(Wolb_unifrac_betadisper_d_1)
+Wolb_unifrac_betadisper_d_05 <- betadisper(Wolb_unifrac_dist_d_05, metadata$Species) 
+anova(Wolb_unifrac_betadisper_d_05)
+# No Wolb
+metadata <- data.frame(sample_data(NoWolb_rr_up_phytree))
+unifracs = GUniFrac::GUniFrac(t(as(otu_table(NoWolb_rr_up_phytree), "matrix")), phy_tree(NoWolb_rr_up_phytree), alpha = c(0, 0.5, 1))$unifracs
+NoWolb_unifrac_distUW <- as.dist(unifracs[, , "d_UW"])
+NoWolb_unifrac_dist_d_1 <- as.dist(unifracs[, , "d_1"])
+NoWolb_unifrac_dist_d_05 <- as.dist(unifracs[, , "d_0.5"])
+NoWolb_unifrac_betadisperUW <- betadisper(NoWolb_unifrac_distUW, metadata$Species) 
+anova(NoWolb_unifrac_betadisperUW)
+NoWolb_unifrac_betadisper_d_1 <- betadisper(NoWolb_unifrac_dist_d_1, metadata$Species) 
+anova(NoWolb_unifrac_betadisper_d_1)
+NoWolb_unifrac_betadisper_d_05 <- betadisper(NoWolb_unifrac_dist_d_05, metadata$Species) 
+anova(NoWolb_unifrac_betadisper_d_05)
+
+```
+
+Unweighted Unifrac distances worked best for both datasets, with or without _Wolbachia_. Because unweighted distances resolved homogeneity of variance across datasets, and because Bray-Curtis resolved only marginally (p=0.06) homogeneity of variance for groups in the "No Wolbachia" samples, I will adopt unifrac (UW) distances in the tests below.
+
+Test the hypothesis that microbiome is different between host species
+
+```{r permanova-sp}
+# With Wolbachia
+HostSpecies <- sample_data(Wolb_rr_up_phytree)$Species
+Year_all <- sample_data(Wolb_rr_up_phytree)$Year
+Season_all <- sample_data(Wolb_rr_up_phytree)$Season
+metadata <- data.frame(sample_data(Wolb_rr_up_phytree))
+adonis2(formula = Wolb_unifrac_distUW ~ Species + Season_all, data = metadata, strata = Year_all, permutations = 999)
+
+# Without Wolbachia
+HostSpecies <- sample_data(NoWolb_rr_up_phytree)$Species
+Year_all <- sample_data(NoWolb_rr_up_phytree)$Year
+Season_all <- sample_data(NoWolb_rr_up_phytree)$Season
+metadata <- data.frame(sample_data(NoWolb_rr_up_phytree))
+adonis2(formula = NoWolb_unifrac_distUW ~ Species + Season_all, data = metadata, strata = Year_all, permutations = 999)
+```
+
+The microbiome of _Allograpta_ and _Eupeodes_ is different regardless of whether _Wolbachia_ is present or absent! It is worth noting that _Wolbachia_ itself is represented by different ASVs in each host species.
+
+> The tests above may be sufficient to answer our question about whether microbiota differs between host species. Using unweighted Unifrac distances means that we are inferring differences mostly based on presence or absence of bacterial species (ASV) rather than their relative abundance. The significant results are consistent with what we observed in PCoA (downstream this analysis). Nevertheless, to be consistent with tests I will be doing later I will also test weighted distances using a modified F-statistics introducted by Anderson et al. (2017). This F-statistic, known as "F2-statistic" follows Brown & Forsythe (1974) and accounts for sample heterogeneity. Chris Ward created PermanovaModF R package, that is the result of adapting a matlab implementation of the F2-statistic test (via the Fathom Toolbox library), and made it available on https://github.com/AWRI/permanovaModF
+
+PermanovaModF only allows for one-way Permanova. Following, I test weighted Unifrac distances and the explanatory variables "Species" and "Season" separately.
+
+```{r permanovamodf_species}
+#library(devtools)
+#install_github("AWRI/permanovaModF")
+library(permanovaModF)
+# With Wolbachia
+HostSpecies <- sample_data(Wolb_rr_up_phytree)$Species
+Year_all <- sample_data(Wolb_rr_up_phytree)$Year
+Season_all <- sample_data(Wolb_rr_up_phytree)$Season
+metadata <- data.frame(sample_data(Wolb_rr_up_phytree))
+permanovaModF(as.matrix(Wolb_unifrac_dist_d_1), metadata, groups = c("Species", "Season"))
+permanovaModF(as.matrix(Wolb_unifrac_dist_d_05), metadata, groups = c("Species", "Season"))
+
+# Without Wolbachia
+HostSpecies <- sample_data(NoWolb_rr_up_phytree)$Species
+Year_all <- sample_data(NoWolb_rr_up_phytree)$Year
+Season_all <- sample_data(NoWolb_rr_up_phytree)$Season
+metadata <- data.frame(sample_data(NoWolb_rr_up_phytree))
+permanovaModF(as.matrix(NoWolb_unifrac_dist_d_1), metadata, groups = c("Species", "Season"))
+permanovaModF(as.matrix(NoWolb_unifrac_dist_d_05), metadata, groups = c("Species", "Season"))
+```
+
+The results above are consistent with the results obtained using unweighted Unifrac distances. Microbiomes differ from one species to the other. For alpha 0.5, unifrac distances give less weight to sample abundance than Bray-Curtis or Weighted distances and, in this case, Season was only marginally above the p-value cutoff (p=0.065).
+
+Now, to test the second hypothesis. To recap, we hypothesized:
+
+"(2) That microbial communities are different between North and South populations for *non-migratory* hoverflies ( _Allograpta_ ), but more similar between North and South populations for *migratory* hoverflies ( _Eupeodes_ )"
+
+First, we need to split datasets into species-specific data.
+
+```{r split-data-in-species}
+#Wolb
+Allograpta_wolb <- Wolb_rr_up_phytree %>% subset_samples(Species == "Allograpta obliqua")
+Eupeodes_wolb <- Wolb_rr_up_phytree %>% subset_samples(Species == "Eupeodes americanus")
+
+#NoWolb
+Allograpta_Nowolb <- NoWolb_rr_up_phytree %>% subset_samples(Species == "Allograpta obliqua")
+Eupeodes_Nowolb <- NoWolb_rr_up_phytree %>% subset_samples(Species == "Eupeodes americanus")
+```
+
+Let's check if Bray-Curtis distances can be used to test geography, while respecting the assumption of homogeneity of variance for Permanova tests
+
+```{r species-data-betadisper}
+#Wolb
+## Allograpta
+Allograpta_wolbNS <- Allograpta_wolb %>% subset_samples(S_W_N != "West") # <- exclude a few "West" samples, so we can compare only North and South samples
+Allograpta_wolbNS <- prune_taxa(taxa_sums(Allograpta_wolbNS) > 0, Allograpta_wolbNS) # <- exclude taxa that has zero counts across samples, possibly because of subsetting data
+otu_table <- t(as(otu_table(Allograpta_wolbNS), "matrix"))
+AWolb_bray_dist <- vegdist(otu_table, method = "bray")
+metadata_AWolb <- data.frame(sample_data(Allograpta_wolbNS))
+disper_NS_AWolb <- betadisper(AWolb_bray_dist, metadata_AWolb$S_W_N)
+anova(disper_NS_AWolb) # p-value < 0.0016; data is over dispersed
+## Eupeodes
+Eupeodes_wolb <- prune_taxa(taxa_sums(Eupeodes_wolb) > 0, Eupeodes_wolb) # <- exclude taxa that has zero counts across samples, possibly because of subsetting data
+otu_table <- t(as(otu_table(Eupeodes_wolb), "matrix"))
+EaWolb_bray_dist <- vegdist(otu_table, method = "bray")
+metadata_EaWolb <- data.frame(sample_data(Eupeodes_wolb))
+disper_NS_EaWolb <- betadisper(EaWolb_bray_dist, metadata_EaWolb$S_W_N)
+anova(disper_NS_EaWolb) # p-value = 0.8578; data is not over dispersed
+
+#NoWolb
+## Allograpta
+Allograpta_NowolbNS <- Allograpta_Nowolb %>% subset_samples(S_W_N != "West") # <- exclude a few "West" samples, so we can compare only North and South samples
+Allograpta_NowolbNS <- prune_taxa(taxa_sums(Allograpta_NowolbNS) > 0, Allograpta_NowolbNS) # <- exclude taxa that has zero counts across samples, possibly because of subsetting data
+otu_table <- t(as(otu_table(Allograpta_NowolbNS), "matrix"))
+ANoWolb_bray_dist <- vegdist(otu_table, method = "bray")
+metadata_ANoWolb <- data.frame(sample_data(Allograpta_NowolbNS))
+disper_NS_ANoWolb <- betadisper(ANoWolb_bray_dist, metadata_ANoWolb$S_W_N)
+anova(disper_NS_ANoWolb) # p-value = 0.1301; data is not over dispersed
+## Eupeodes
+Eupeodes_Nowolb <- prune_taxa(taxa_sums(Eupeodes_Nowolb) > 0, Eupeodes_Nowolb) # <- exclude taxa that has zero counts across samples, possibly because of subsetting data
+otu_table <- t(as(otu_table(Eupeodes_Nowolb), "matrix"))
+EaNoWolb_bray_dist <- vegdist(otu_table, method = "bray")
+metadata_EaNoWolb <- data.frame(sample_data(Eupeodes_Nowolb))
+disper_NS_EaNoWolb <- betadisper(EaNoWolb_bray_dist, metadata_EaNoWolb$S_W_N)
+anova(disper_NS_EaNoWolb) # p-value = 0.4914; data is not over dispersed
+```
+
+Almost every case meets Permanova's assumption of homogeneity of variance, except one. Like earlier, I will test all Unifrac distances next and for cases where data is still overdispersed, then I will use the modified, F2-statistic.  
+
+>Note: by prunning taxa (see previous code chunk), the phylogenetic tree of each data subset is also trimmed eliminating taxa excluded by subsetting the dataset.
+
+```{r betadisper-UniFrac-byHostSpeciesNorthSouth}
+# Wolb Allograpta
+unifracs = GUniFrac::GUniFrac(t(as(otu_table(Allograpta_wolbNS), "matrix")), phy_tree(Allograpta_wolbNS), alpha = c(0, 0.5, 1))$unifracs
+AWolb_unifrac_distUW <- as.dist(unifracs[, , "d_UW"])
+AWolb_unifrac_dist_d_1 <- as.dist(unifracs[, , "d_1"])
+AWolb_unifrac_dist_d_05 <- as.dist(unifracs[, , "d_0.5"])
+AWolb_unifrac_betadisperUW <- betadisper(AWolb_unifrac_distUW, metadata_AWolb$S_W_N) 
+anova(AWolb_unifrac_betadisperUW)
+AWolb_unifrac_betadisper_d_1 <- betadisper(AWolb_unifrac_dist_d_1, metadata_AWolb$S_W_N) 
+anova(AWolb_unifrac_betadisper_d_1)
+AWolb_unifrac_betadisper_d_05 <- betadisper(AWolb_unifrac_dist_d_05, metadata_AWolb$S_W_N) 
+anova(AWolb_unifrac_betadisper_d_05)
+
+# Wolb Eupeodes
+unifracs = GUniFrac::GUniFrac(t(as(otu_table(Eupeodes_wolb), "matrix")), phy_tree(Eupeodes_wolb), alpha = c(0, 0.5, 1))$unifracs
+EaWolb_unifrac_distUW <- as.dist(unifracs[, , "d_UW"])
+EaWolb_unifrac_dist_d_1 <- as.dist(unifracs[, , "d_1"])
+EaWolb_unifrac_dist_d_05 <- as.dist(unifracs[, , "d_0.5"])
+EaWolb_unifrac_betadisperUW <- betadisper(EaWolb_unifrac_distUW, metadata_EaWolb$S_W_N) 
+anova(EaWolb_unifrac_betadisperUW)
+EaWolb_unifrac_betadisper_d_1 <- betadisper(EaWolb_unifrac_dist_d_1, metadata_EaWolb$S_W_N) 
+anova(EaWolb_unifrac_betadisper_d_1)
+EaWolb_unifrac_betadisper_d_05 <- betadisper(EaWolb_unifrac_dist_d_05, metadata_EaWolb$S_W_N) 
+anova(EaWolb_unifrac_betadisper_d_05)
+
+# No Wolb Allograpta
+unifracs = GUniFrac::GUniFrac(t(as(otu_table(Allograpta_NowolbNS), "matrix")), phy_tree(Allograpta_NowolbNS), alpha = c(0, 0.5, 1))$unifracs
+ANoWolb_unifrac_distUW <- as.dist(unifracs[, , "d_UW"])
+ANoWolb_unifrac_dist_d_1 <- as.dist(unifracs[, , "d_1"])
+ANoWolb_unifrac_dist_d_05 <- as.dist(unifracs[, , "d_0.5"])
+ANoWolb_unifrac_betadisperUW <- betadisper(ANoWolb_unifrac_distUW, metadata_ANoWolb$S_W_N) 
+anova(ANoWolb_unifrac_betadisperUW)
+ANoWolb_unifrac_betadisper_d_1 <- betadisper(ANoWolb_unifrac_dist_d_1, metadata_ANoWolb$S_W_N) 
+anova(ANoWolb_unifrac_betadisper_d_1)
+ANoWolb_unifrac_betadisper_d_05 <- betadisper(ANoWolb_unifrac_dist_d_05, metadata_ANoWolb$S_W_N) 
+anova(ANoWolb_unifrac_betadisper_d_05)
+
+#No Wolb Eupeodes
+unifracs = GUniFrac::GUniFrac(t(as(otu_table(Eupeodes_Nowolb), "matrix")), phy_tree(Eupeodes_Nowolb), alpha = c(0, 0.5, 1))$unifracs
+EaNoWolb_unifrac_distUW <- as.dist(unifracs[, , "d_UW"])
+EaNoWolb_unifrac_dist_d_1 <- as.dist(unifracs[, , "d_1"])
+EaNoWolb_unifrac_dist_d_05 <- as.dist(unifracs[, , "d_0.5"])
+EaNoWolb_unifrac_betadisperUW <- betadisper(EaNoWolb_unifrac_distUW, metadata_EaNoWolb$S_W_N) 
+anova(EaNoWolb_unifrac_betadisperUW)
+EaNoWolb_unifrac_betadisper_d_1 <- betadisper(EaNoWolb_unifrac_dist_d_1, metadata_EaNoWolb$S_W_N) 
+anova(EaNoWolb_unifrac_betadisper_d_1)
+EaNoWolb_unifrac_betadisper_d_05 <- betadisper(EaNoWolb_unifrac_dist_d_05, metadata_EaNoWolb$S_W_N) 
+anova(EaNoWolb_unifrac_betadisper_d_05)
+```
+
+All results above show that unweighted Unifrac distances meet the assumption of homogeneity of variance, for all species and for cases were _Wolbachia_ is either present or absent. In this case, however, I am more interested in results using weighted distances than unweighted, since I don't expect microbial communities _within_ a species to have drastically different taxonomical composition, but I would predict that relative abundance of specific bacterial taxa may change according to location. 
+
+Are microbial communities different between North and South populations of each syrphid species?
+
+We will start testing Allograpta first
+
+```{r allo_permanova_S_W_N}
+# Allograpta With Wolbachia
+A_S_W_N <- metadata_AWolb$S_W_N
+A_Year_all <- metadata_AWolb$Year
+A_Season_all <- metadata_AWolb$Season
+adonis2(formula = AWolb_unifrac_distUW ~ A_S_W_N + A_Season_all, data = metadata_AWolb, strata = A_Year_all, permutations = 999)
+
+# Allograpta Without Wolbachia
+ANW_S_W_N <- metadata_ANoWolb$S_W_N
+ANW_Year_all <- metadata_ANoWolb$Year
+ANW_Season_all <- metadata_ANoWolb$Season
+adonis2(formula = ANoWolb_unifrac_distUW ~ ANW_S_W_N + ANW_Season_all, data = metadata_ANoWolb, strata = ANW_Year_all, permutations = 999)
+```
+
+The results above indicate that, contrary to our hypothesis, differences in the Allograpta's microbiome are not explained by geography (i.e. South versus North populations). In fact, the residuals of these tests seem to indicate that about 95% of variation in microbiome composition is not explained by geography, for either dataset (AWolb and ANoWolb). For Allograpta with Wolbachia removed, both alpha=1 and alpha=0.5 meet the assumption of homogeneity. Let's test weighted Unifrac distances and use F2-statistic where applicable.
+
+```{r unifrac_alphavariable}
+#Allograpta With wolbachia (alpha 1)
+# F2-statistic (PermanovaModF)
+permanovaModF(as.matrix(AWolb_unifrac_dist_d_1), metadata_AWolb, groups = c("S_W_N", "Season"))
+# Allograpta With Wolbachia (alpha 0.5)
+# F2-statistic (PermanovaModF)
+permanovaModF(as.matrix(AWolb_unifrac_dist_d_05), metadata_AWolb, groups = c("S_W_N", "Season"))
+# Allograpta Without Wolbachia (alpha 1)
+# Regular F-statistic (adonis2)
+adonis2(formula = ANoWolb_unifrac_dist_d_1 ~ ANW_S_W_N + ANW_Season_all, data = metadata_ANoWolb, strata = ANW_Year_all, permutations = 999)
+# Allograpta Withouth Wolbachia (alpha 0.5)
+# Regular F-statistic (adonis2)
+adonis2(formula = ANoWolb_unifrac_dist_d_05 ~ ANW_S_W_N + ANW_Season_all, data = metadata_ANoWolb, strata = ANW_Year_all, permutations = 999)
+```
+
+
+In all cases, our hypothesis is supported, indicating that northern and southern samples of _Allograpta_ are significantly different, consistent with the rationale that if these hoverflies are not migratory then we expect their microbiome to not have a significant influence from the southern population, their diet and environment.
+
+Now I will inspect Eupeodes samples
+
+```{r eupeodes_permanova_S_W_N}
+# Eupeodes With Wolbachia
+Ea_S_W_N <- metadata_EaWolb$S_W_N
+Ea_Year_all <- metadata_EaWolb$Year
+Ea_Season_all <- metadata_EaWolb$Season
+adonis2(formula = EaWolb_unifrac_distUW ~ Ea_S_W_N + Ea_Season_all, data = metadata_EaWolb, strata = Ea_Year_all, permutations = 999)
+adonis2(formula = EaWolb_unifrac_dist_d_1 ~ Ea_S_W_N + Ea_Season_all, data = metadata_EaWolb, strata = Ea_Year_all, permutations = 999)
+adonis2(formula = EaWolb_unifrac_dist_d_05 ~ Ea_S_W_N + Ea_Season_all, data = metadata_EaWolb, strata = Ea_Year_all, permutations = 999)
+
+# Eupeodes Without Wolbachia
+EaNW_S_W_N <- metadata_EaNoWolb$S_W_N
+EaNW_Year_all <- metadata_EaNoWolb$Year
+EaNW_Season_all <- metadata_EaNoWolb$Season
+adonis2(formula = EaNoWolb_unifrac_distUW ~ EaNW_S_W_N + EaNW_Season_all, data = metadata_EaNoWolb, strata = EaNW_Year_all, permutations = 999)
+adonis2(formula = EaNoWolb_unifrac_dist_d_1 ~ EaNW_S_W_N + EaNW_Season_all, data = metadata_EaNoWolb, strata = EaNW_Year_all, permutations = 999)
+adonis2(formula = EaNoWolb_unifrac_dist_d_05 ~ EaNW_S_W_N + EaNW_Season_all, data = metadata_EaNoWolb, strata = EaNW_Year_all, permutations = 999)
+```
+
+The results above also support our hypothesis that microbiome samples of _Eupeodes_ _americanus_, a migratory hoverfly, should be similar to each other regardless of whether they were collected in the northern or southern sites, because we expect a higher rate of exchange of microbes among individuals across the sampled geographical range.
+
+
+************
+# Figures
+************
+
+Alpha diversity, samples with Wolbachia
+
+```{r combine-bac-by-family, eval=FALSE}
+pseq_alpha <-aggregate_taxa(Wolb_rr_up, level = "Genus")
+tab <-microbiome::diversity(pseq_alpha, index = "Shannon")
+```
+
+Extract and prepare dataframe for plotting alpha diversity as a violin plot
+```{r plot-violin-plots}
+pseq_alpha_meta <- microbiome::meta(pseq_alpha)
+pseq_alpha_meta$Shannon <- tab$shannon
+
+pseq_alpha_plot <- ggviolin(pseq_alpha_meta %>% mutate(Species = factor(Species, levels = c("Allograpta obliqua", "Eupeodes americanus", "Eupeodes pomus"))), x="Species", y="Shannon", add="boxplot", fill="Species")+scale_fill_manual(values = c("Allograpta obliqua" = "#FB9A99", "Eupeodes americanus" = "#E31A1C", "Eupeodes pomus" = "#FDBF6F"), labels = c("<i>Allograpta obliqua</i>","<i>Eupeodes americanus</i>" ,"<i>Eupeodes pomus</i>"))
+
+p1 <- pseq_alpha_plot+ labs( fill = "<b> Species </b>",
+  y = "Shannon index"
+) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x.bottom = element_blank(),
+    axis.title.y = element_markdown(), 
+    legend.text = element_markdown(size = 14),
+    legend.title = element_markdown(size = 14))
+ggpar(p1, ylim = c(0, 3))
+```
+
+```{r save-alpha-diversity-plot, eval=FALSE}
+ggsave("../results/Figures/March_AlphaDiversity.pdf", width=15, height=10)
+```
+
+
+Alpha diversity, samples without Wolbachia
+
+```{r combine-bac-by-family, eval=FALSE}
+pseq_alpha <-aggregate_taxa(NoWolb_rr_up, level = "Genus")
+tab <-microbiome::diversity(pseq_alpha, index = "Shannon")
+```
+
+Extract and prepare dataframe for plotting alpha diversity as a violin plot
+```{r plot-violin-plots}
+pseq_alpha_meta <- microbiome::meta(pseq_alpha)
+pseq_alpha_meta$Shannon <- tab$shannon
+
+pseq_alpha_plot <- ggviolin(pseq_alpha_meta %>% mutate(Species = factor(Species, levels = c("Allograpta obliqua", "Eupeodes americanus", "Eupeodes pomus"))), x="Species", y="Shannon", add="boxplot", fill="Species")+scale_fill_manual(values = c("Allograpta obliqua" = "#FB9A99", "Eupeodes americanus" = "#E31A1C", "Eupeodes pomus" = "#FDBF6F"), labels = c("<i>Allograpta obliqua</i>","<i>Eupeodes americanus</i>" ,"<i>Eupeodes pomus</i>"))
+
+p1 <- pseq_alpha_plot+ labs( fill = "<b> Species </b>",
+  y = "Shannon index"
+) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x.bottom = element_blank(),
+    axis.title.y = element_markdown(), 
+    legend.text = element_markdown(size = 14),
+    legend.title = element_markdown(size = 14))
+ggpar(p1, ylim = c(0, 3))
+```
+
+```{r save-alpha-diversity-plot, eval=FALSE}
+ggsave("../results/Figures/March_AlphaDiversity_no_Wolbachia.pdf", width=15, height=10)
+```
+
+
+Diversity barplot
+
+
+PCoA plots
+
+```{r pcoa}
+# PCoA with density curves on the x and y-axes
+## Allograpta with No Wolbachia, wunifrac
+unifrac_dist <- ANoWolb_unifrac_dist_d_1
+ps_object <- Allograpta_NowolbNS
+pcoa <- cmdscale(as.matrix(unifrac_dist), eig = TRUE, k = 2)
+scores <- as.data.frame(pcoa$points)
+colnames(scores) <- c("MDS1", "MDS2")
+
+# Add metadata
+metadata <- data.frame(sample_data(ps_object))
+metadata$MigratoryStatus <- factor(metadata$MigratoryStatus, levels = c("No", "Yes", "Unknown"))
+plot_data <- cbind(scores, metadata)
+
+# Create variance variable for the plot axis labels
+var_explained <- round(100 * pcoa$eig / sum(pcoa$eig), 2)
+
+# Generate figure (PCoA and boxplots along both axis)
+p1 <- ggplot(plot_data, aes(x = MDS1, y = MDS2, color = S_W_N, shape = MigratoryStatus)) +
+  geom_point(size = 8, alpha = 0.5) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    x = paste0("MDS1 (", var_explained[1], "%)"),
+    y = paste0("MDS2 (", var_explained[2], "%)"),
+    color = "Population",
+    shape = "Migratory?",
+    title = "<i>Allograpta</i>, Weighted Unifrac",
+    caption = "<i>F<sub>2</sub></i>=3.001, df=1,29, p-value=<b>0.001</b>"
+  ) +
+  theme_minimal() + theme(legend.text = element_text(size = 14), legend.title = element_text(size = 14), plot.title = element_markdown(), 
+                          plot.caption = element_markdown()) +
+  scale_shape_manual(values= 15:17) +
+  ggside::geom_xsideboxplot(aes(fill = S_W_N, y = S_W_N, group = S_W_N), orientation = "y", show.legend = FALSE) +
+  ggside::geom_ysideboxplot(aes(fill = S_W_N, x = S_W_N, group = S_W_N), orientation = "x", show.legend = FALSE) +
+  ggside::scale_xsidey_discrete(labels = NULL) +
+  ggside::scale_ysidex_discrete(labels = NULL) +
+  ggside::theme_ggside_void()+
+  scale_fill_brewer(palette = "Set2")
+
+
+#Allograpta with no Wolbachia, unweighted unifrac
+
+unifrac_dist <- ANoWolb_unifrac_distUW
+ps_object <- Allograpta_NowolbNS
+pcoa <- cmdscale(as.matrix(unifrac_dist), eig = TRUE, k = 2)
+scores <- as.data.frame(pcoa$points)
+colnames(scores) <- c("MDS1", "MDS2")
+
+# Add metadata
+metadata <- data.frame(sample_data(ps_object))
+metadata$MigratoryStatus <- factor(metadata$MigratoryStatus, levels = c("No", "Yes", "Unknown"))
+plot_data <- cbind(scores, metadata)
+
+# Create variance variable for the plot axis labels
+var_explained <- round(100 * pcoa$eig / sum(pcoa$eig), 2)
+
+# Generate figure (PCoA and boxplots along both axis)
+p2 <- ggplot(plot_data, aes(x = MDS1, y = MDS2, color = S_W_N, shape = MigratoryStatus)) +
+  geom_point(size = 8, alpha = 0.5) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    x = paste0("MDS1 (", var_explained[1], "%)"),
+    y = paste0("MDS2 (", var_explained[2], "%)"),
+    color = "Population",
+    shape = "Migratory?",
+    title = "<i>Allograpta</i>, Unweighted Unifrac",
+    caption = "<i>F</i>=0.995, df=1,29, p-value=0.507"
+  ) +
+  theme_minimal() + theme(legend.text = element_text(size = 14), legend.title = element_text(size = 14), plot.title = element_markdown(), 
+                          plot.caption = element_markdown()) +
+  scale_shape_manual(values= 15:17) +
+  ggside::geom_xsideboxplot(aes(fill = S_W_N, y = S_W_N, group = S_W_N), orientation = "y", show.legend = FALSE) +
+  ggside::geom_ysideboxplot(aes(fill = S_W_N, x = S_W_N, group = S_W_N), orientation = "x", show.legend = FALSE) +
+  ggside::scale_xsidey_discrete(labels = NULL) +
+  ggside::scale_ysidex_discrete(labels = NULL) +
+  ggside::theme_ggside_void()+
+  scale_fill_brewer(palette = "Set2")
+
+## Eupeodes with No Wolbachia, wunifrac
+unifrac_dist <- EaNoWolb_unifrac_dist_d_1
+ps_object <- Eupeodes_Nowolb
+pcoa <- cmdscale(as.matrix(unifrac_dist), eig = TRUE, k = 2)
+scores <- as.data.frame(pcoa$points)
+colnames(scores) <- c("MDS1", "MDS2")
+
+# Add metadata
+metadata <- data.frame(sample_data(ps_object))
+metadata$MigratoryStatus <- factor(metadata$MigratoryStatus, levels = c("No", "Yes", "Unknown"))
+plot_data <- cbind(scores, metadata)
+
+# Create variance variable for the plot axis labels
+var_explained <- round(100 * pcoa$eig / sum(pcoa$eig), 2)
+
+# Generate figure (PCoA and boxplots along both axis)
+p3 <- ggplot(plot_data, aes(x = MDS1, y = MDS2, color = S_W_N, shape = MigratoryStatus)) +
+  geom_point(size = 8, alpha = 0.5) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    x = paste0("MDS1 (", var_explained[1], "%)"),
+    y = paste0("MDS2 (", var_explained[2], "%)"),
+    color = "Population",
+    shape = "Migratory?",
+    title = "<i>Eupeodes</i>, Weighted Unifrac",
+    caption = "<i>F</i>=0.0464, df=1,45, p-value=0.720"
+  ) +
+  theme_minimal() + theme(legend.text = element_text(size = 14), legend.title = element_text(size = 14), plot.title = element_markdown(), 
+                          plot.caption = element_markdown()) +
+  scale_shape_manual(values= 15:17) +
+  ggside::geom_xsideboxplot(aes(fill = S_W_N, y = S_W_N, group = S_W_N), orientation = "y", show.legend = FALSE) +
+  ggside::geom_ysideboxplot(aes(fill = S_W_N, x = S_W_N, group = S_W_N), orientation = "x", show.legend = FALSE) +
+  ggside::scale_xsidey_discrete(labels = NULL) +
+  ggside::scale_ysidex_discrete(labels = NULL) +
+  ggside::theme_ggside_void()+
+  scale_fill_brewer(palette = "Set2")
+
+#Euepeodes with no Wolbachia, unweighted unifrac
+
+unifrac_dist <- EaNoWolb_unifrac_distUW
+ps_object <- Eupeodes_Nowolb
+pcoa <- cmdscale(as.matrix(unifrac_dist), eig = TRUE, k = 2)
+scores <- as.data.frame(pcoa$points)
+colnames(scores) <- c("MDS1", "MDS2")
+
+# Add metadata
+metadata <- data.frame(sample_data(ps_object))
+metadata$MigratoryStatus <- factor(metadata$MigratoryStatus, levels = c("No", "Yes", "Unknown"))
+plot_data <- cbind(scores, metadata)
+
+# Create variance variable for the plot axis labels
+var_explained <- round(100 * pcoa$eig / sum(pcoa$eig), 2)
+
+# Generate figure (PCoA and boxplots along both axis)
+p4 <- ggplot(plot_data, aes(x = MDS1, y = MDS2, color = S_W_N, shape = MigratoryStatus)) +
+  geom_point(size = 8, alpha = 0.5) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    x = paste0("MDS1 (", var_explained[1], "%)"),
+    y = paste0("MDS2 (", var_explained[2], "%)"),
+    color = "Population",
+    shape = "Migratory?",
+    title = "<i>Eupeodes</i>, Unweighted Unifrac",
+    caption = "<i>F</i>=0.695, df=1,45, p-value=0.803"
+  ) +
+  theme_minimal() + theme(legend.text = element_text(size = 14), legend.title = element_text(size = 14), plot.title = element_markdown(), 
+                          plot.caption = element_markdown()) +
+  scale_shape_manual(values= 15:17) +
+  ggside::geom_xsideboxplot(aes(fill = S_W_N, y = S_W_N, group = S_W_N), orientation = "y", show.legend = FALSE) +
+  ggside::geom_ysideboxplot(aes(fill = S_W_N, x = S_W_N, group = S_W_N), orientation = "x", show.legend = FALSE) +
+  ggside::scale_xsidey_discrete(labels = NULL) +
+  ggside::scale_ysidex_discrete(labels = NULL) +
+  ggside::theme_ggside_void()+
+  scale_fill_brewer(palette = "Set2")
+
+p5 <- plot_grid(p1 + theme(legend.position="none"),
+          p3 + theme(legend.position="none"),
+          p2 + theme(legend.position="none"), 
+          p4 + theme(legend.position="none"), labels = c("A", "C", "B", "D"), ncol = 2, nrows = 1, align = "hv", rel_widths = c(1,1), rel_heights = c(1,1),
+          panel_spacing = unit(0, "cm"))
+
+# extract the legend from one of the plots
+legend <- get_legend(
+  # create some space to the left of the legend
+  p1 + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+
+plot_grid(p5, legend, rel_widths = c(6, 1))
+ggsave("../results/Figures/PCoA.pdf", height = 12, width = 18)
+```
+
+
+```{r barplotMicrobiomeWolb}
+#Barplot via older method (needs revision)
+pseq_alpha <-aggregate_taxa(Wolb_rr_up, level = "Genus")
+
+# 1. Transform phyloseq object into a data frame
+pseq_barplot <- pseq_alpha %>% psmelt() %>% arrange(OTU) %>% rename(ASV = OTU) %>%
+        select(ASV, Kingdom, Phylum, Class, Order, Family, Genus, Sample, Abundance) %>% spread(Sample, Abundance)
+
+# 2. Taxa are rows. Create a column for summing all reads per taxa, and order taxa so that the most abundant taxa is listed first, then the second, third, etc. Next, create a column with the cumulative sums (i.e. row 1a = row1, row2a = row1 + row2, row3a = row1 + row2 + row3)
+
+pseq_barplot$abundance_sum <- rowSums(pseq_barplot[8:146])
+pseq_barplot <- pseq_barplot[order(-pseq_barplot$abundance_sum),]
+pseq_barplot <- pseq_barplot %>% mutate(cumulative_sums = cumsum(abundance_sum))
+
+# 3. Determine the threshold where cumulative abundance reaches 95%
+threshold <- sum(pseq_barplot$abundance_sum) * 0.95
+
+# 4. Create a new taxonomy table with the updated Genus information
+pseq_barplot$Genus <- ifelse(pseq_barplot$cumulative_sums >= threshold, "other", pseq_barplot$Genus)
+
+
+# Join the pseq_barplot and metadata
+metadata <- data.frame(sample_data(Wolb_rr_up))
+data_combined <- pseq_barplot[7:146] %>%
+  gather(sample, count, -Genus) %>%
+  dplyr::left_join(metadata, by = c("sample" = "old_ID"))
+
+# For plotting purposes, inspect number of taxa present and order to be presented
+unique(data_combined$Genus)
+data_combined$Genus <- factor(data_combined$Genus, levels = c("Wolbachia", "Holzapfelia", "Gilliamella", "Unknown", "other"))
+
+# Create the side-by-side bar plots using ggplot2 and facet_wrap
+ggplot(data_combined, aes(x = sample, y = count, fill = Genus)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.9) +
+  facet_grid(cols = vars(Species), scale="free") + 
+  labs(x = "Samples",
+       y = "Relative Frequency") +
+  theme(legend.position = "top", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(),
+strip.text = element_text(face = "italic", size = 14), legend.text = element_markdown(size = 14), legend.title = element_markdown(size = 14)) +
+  scale_fill_manual(values = c("Wolbachia" = "#009E73", "Holzapfelia" = "black", "Gilliamella" = "#CC79A7", "Unknown" = "lightgrey", "other" = "darkgrey"),
+  labels = c("<i>Wolbachia</i>","<i>Holzapfelia</i>","<i>Gilliamella</i>","Unknown","Other"))  # Customize fill colors
+```
+
+```{r savebarplot-wolb}
+ggsave("../results/Figures/Wolb_barplot.pdf", width=15, height=10)
+```
+
+
+```{r barplotMicrobiomeNoWolb}
+#Barplot via older method (needs revision)
+pseq_alpha <-aggregate_taxa(NoWolb_rr_up, level = "Family")
+
+# 1. Transform phyloseq object into a data frame
+pseq_barplot <- pseq_alpha %>% psmelt() %>% arrange(OTU) %>% rename(ASV = OTU) %>%
+        select(ASV, Kingdom, Phylum, Class, Order, Family, Sample, Abundance) %>% spread(Sample, Abundance)
+
+# 1.1 It seems like taxonomical ranks identical at the Family level were not merged (or aggregated) because higher rank identification are different (e.g. Lactobacillaceae is identified as belonging to the phylum Proteobacteria, but other times to the phylym Pseudomonadota). This may have been caused by using Blast identification to improve taxonomy. To fix this, I will manually aggregate these instances.
+
+pseq_barplot <- pseq_barplot[,-c(1:5)] %>% group_by(Family) %>% summarise_all(sum) %>% as.data.frame()
+
+# 2. Taxa are rows. Create a column for summing all reads per taxa, and order taxa so that the most abundant taxa is listed first, then the second, third, etc. Next, create a column with the cumulative sums (i.e. row 1a = row1, row2a = row1 + row2, row3a = row1 + row2 + row3)
+
+pseq_barplot$abundance_sum <- rowSums(pseq_barplot[7:84])
+pseq_barplot <- pseq_barplot[order(-pseq_barplot$abundance_sum),]
+pseq_barplot <- pseq_barplot %>% mutate(cumulative_sums = cumsum(abundance_sum))
+
+# 3. Determine the threshold where cumulative abundance reaches 95%
+threshold <- sum(pseq_barplot$abundance_sum) * 0.95
+
+# 4. Create a new taxonomy table with the updated Genus information
+pseq_barplot$Family <- ifelse(pseq_barplot$cumulative_sums >= threshold, "other", pseq_barplot$Family)
+
+
+# Join the pseq_barplot and metadata
+metadata <- data.frame(sample_data(NoWolb_rr_up))
+data_combined <- pseq_barplot[1:84] %>%
+  gather(sample, count, -Family) %>%
+  dplyr::left_join(metadata, by = c("sample" = "old_ID"))
+
+# For plotting purposes, inspect number of taxa present and order to be presented
+unique(data_combined$Family)
+
+#Based on the ggplot plot (below) I redefined the order of the samples
+data_combined$Family <- factor(data_combined$Family, levels = c("Lactobacillaceae", "Acetobacteraceae", "Orbaceae", "Erwiniaceae","Yersiniaceae","Enterococcaceae","Hafniaceae","Moraxellaceae", "Morganellaceae","Weeksellaceae","Xanthomonadaceae","Enterobacteriaceae","Other"))
+
+# Create the side-by-side bar plots using ggplot2 and facet_wrap
+ggplot(data_combined, aes(x = sample, y = count, fill = Family)) +
+  geom_bar(stat = "identity", position = "fill", width = 0.9) +
+  facet_grid(cols = vars(Species), scale="free") + 
+  labs(x = "Samples",
+       y = "Relative Frequency") +
+  theme(legend.position = "top", 
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(),
+strip.text = element_text(face = "italic", size = 14), legend.text = element_markdown(size = 14), legend.title = element_markdown(size = 14)) + scale_fill_manual(values = c("Lactobacillaceae" = "#FFCC00", "Acetobacteraceae" = "#CC3300", "Orbaceae" = "#CC3399", "Erwiniaceae" = "#CC66FF", "Yersiniaceae" = "#003300", "Enterococcaceae" = "#CCFFFF", "Hafniaceae" = "#336666", "Moraxellaceae" = "#663300", "Morganellaceae" = "#CCCC66", "Weeksellaceae" = "#669933", "Xanthomonadaceae" = "#FF3399", "Enterobacteriaceae" = "#FF9933", "other" = "darkgrey"), labels = c("Lactobacillaceae", "Acetobacteraceae", "Orbaceae", "Erwiniaceae","Yersiniaceae","Enterococcaceae","Hafniaceae","Moraxellaceae", "Morganellaceae","Weeksellaceae","Xanthomonadaceae","Enterobacteriaceae","Other"))  # Customize fill colors
+```
+
+
+```{r savebarplot-nowolb}
+ggsave("../results/Figures/NoWolb_barplot.pdf", width=15, height=10)
+```
+
+# Phylogeny of pollinator-associated phyla present in the syrphid species _A._ _obliqua_ and _E._ _americanus_
+
+Steps:
+1. Pick taxa based on a general phylogeny
+2. Determine relative abundance
+3. Make family-specific trees? 
+
+
+```{r pollinator_phylogeny_extract_taxa}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r barplot-diversity-genus}
+
+library(cowplot)
+library(grid)
+
+process_phyloseq <- function(p_data) {
+  # Step 1: Simplify the dataset
+  p_data.clean <- p_data %>% 
+    psmelt()
+
+  # Step 2: Replace NA in "Species" column
+  filtered_no_NA <- p_data.clean %>% 
+    mutate(Genus = ifelse(is.na(Genus) & !is.na(Family), paste0(Family, " spp."),
+                    ifelse(is.na(Genus) & !is.na(Order), paste0(Order, " spp."),
+                    ifelse(is.na(Genus) & !is.na(Class), paste0(Class, " spp."),
+                    ifelse(is.na(Genus) & !is.na(Phylum), paste0(Phylum, " spp."),
+                    ifelse(is.na(Genus) & !is.na(Kingdom), paste0(Kingdom, " spp."), Genus))))))
+
+  # Step 3: Initialize result containers
+  region_plots <- list()
+  all_genus <- list()
+
+  # Step 4: Create color palette
+  combined_genus <- unique(filtered_no_NA$Genus)
+  color_palette <- RColorBrewer::brewer.pal(n= min(8, length(combined_genus)), name = "Dark2")
+  if(length(combined_genus) > 8) {
+    color_palette <- colorRampPalette(color_palette)(length(combined_genus))
+  }
+  combined_genus[length(combined_genus)+1] <- "Other"
+  color_palette[length(color_palette)+1] <- "lightgray"
+  names(color_palette) <- combined_genus
+
+
+  # Step 5: Define species to process
+  species_list <- c("Allograpta obliqua", "Eupeodes americanus", "Eupeodes pomus")
+
+  for (species in species_list) {
+    species_data <- filtered_no_NA %>% filter(sample_Species == species)
+
+    # Step 5.1: Select relevant columns and sum Abundance by unique combinations
+    species_simple <- species_data %>% 
+      select(Sample, Abundance, S_W_N, Genus) %>% 
+      group_by(Sample, S_W_N, Genus) %>% 
+      summarize(Abundance = sum(Abundance), .groups = "drop")
+
+    # Step 5.2: Process data for each "S_W_N"
+    for (geography in unique(species_simple$S_W_N)) {
+      swn_data <- species_simple %>% filter(S_W_N == geography)
+      swn_data <- swn_data %>% group_by(Sample) %>%
+      mutate(Abundance = ifelse(!Abundance == "0", Abundance/sum(Abundance), Abundance)) %>%
+      ungroup()
+      
+    # Step 5.3: Find the 20 most abundant "Genus" and rename others as "Other"
+      sort.Genus <- swn_data %>% 
+        count(Genus, wt = Abundance) %>%
+        arrange(desc(n)) %>%
+        mutate(relativeAb = n/sum(n)) %>%
+        mutate(cumRelAb = cumsum(relativeAb)) %>%
+        # filter(cumRelAb >= 0.3) %>%
+        slice(1:10) %>%
+        pull(Genus)
+      
+      sort.Genus <- unique(sort.Genus)
+
+      swn_data <- swn_data %>% 
+        mutate(Genus = ifelse(Genus %in% sort.Genus, Genus, "Other")) %>% group_by(Sample, S_W_N, Genus) %>% 
+      summarize(Abundance = sum(Abundance), .groups = "drop")
+
+
+    # Step 5.4: Sum Abundance and sort Genus
+      sort.Genus <- swn_data %>% 
+        count(Genus, wt = Abundance) %>% 
+        arrange(desc(n)) %>% 
+        pull(Genus)
+
+    # Step 5.5: Get Sample order
+      Sample.order <- swn_data %>% 
+        filter(Genus == sort.Genus[1]) %>% 
+        arrange(desc(Abundance)) %>% 
+        pull(Sample)
+
+    # Step 5.6: Factor Sample/Genus and save geography-specific object
+      swn_data <- swn_data %>% 
+        mutate(Sample = factor(Sample, levels = Sample.order)) %>% 
+        mutate(Genus = factor(Genus, levels = rev(sort.Genus)))
+
+      all_genus[[paste(species, geography, sep = "_")]] <- unique(swn_data$Genus)
+
+    # Step 6: Create ggplot stacked barplot
+      swn_plot <- swn_data %>% 
+        ggplot(aes(x = Sample, y = Abundance, fill = Genus)) + 
+        geom_bar(stat = "identity", width = 1) + 
+        theme_classic() + 
+        theme(axis.text.x = element_blank(),
+              axis.title.x = element_blank(),
+              axis.text.y = element_blank(),
+              axis.title.y = element_blank(),
+              axis.ticks.x = element_blank(),
+              axis.ticks.y = element_blank(),
+              axis.line = element_blank(),
+              legend.position = "none") + 
+        labs(title = geography) + 
+        theme(plot.title = element_text(hjust = 0.5)) +
+        scale_fill_manual(values=color_palette)
+
+      region_plots[[paste(species, geography, sep = "_")]] <- swn_plot
+    }
+  }
+
+
+  # Step 7: Combine ggplots with cowplot (this isn't perfect, but can be improved in Inkscape)
+  species_plots <- list()
+
+  for (species in species_list) {
+    regions <- sort(unique(filtered_no_NA %>% filter(sample_Species == species) %>% pull(S_W_N)))
+    regions_plot_list <- lapply(regions, function(geography) region_plots[[paste(species, geography, sep = "_")]])
+    species_title <- case_when(species == "Allograpta obliqua" ~ "Allograpta obliqua", 
+                               species == "Eupeodes americanus" ~ "Eupeodes americanus",
+                               species == "Eupeodes pomus" ~ "Eupeodes pomus")
+    species_plots[[species]] <- cowplot::plot_grid(
+      plotlist = regions_plot_list, 
+      ncol = length(regions) 
+    )
+  }
+
+  # final_plot <- cowplot::plot_grid(species_plots[["Allograpta obliqua"]], species_plots[["Eupeodes americanus"]], species_plots[["Eupeodes pomus"]], nrow = 3, rel_heights = c(1.2, 1, 1))
+  # final_plot
+  #ggsave("./Figures/top70percentAbundanceGenus.pdf", width = 15, height = 10)
+
+  
+  # Extra step: make a legend plot that unifies taxa from all months/species data. This plot can be manually added using Inkscape
+  # legend_plot <- ggplot(data.frame(Genus = names(color_palette)[names(color_palette) %in% unlist(all_genus)], Value = 1), aes(x = Genus, y = Value, fill = Genus)) + geom_col() +
+  # scale_fill_manual(values = color_palette) +
+  # theme_void() +
+  # theme(legend.position = "bottom") +
+  # guides(fill = guide_legend(nrow = 2))
+  # 
+  # legend <- get_legend(legend_plot)
+  # grid.newpage()
+  # pdf("./Figures/legend_top70percentAbundanceGenus.pdf", width=20, height=20)
+  # grid.draw(legend)
+  # dev.off()
+
+  #return(list(final_plot = final_plot, species_plots = species_plots, color_palette = color_palette))
+  return(list(species_plots = species_plots))
+}
+q <- process_phyloseq(Wolb_rr_up)
+```
+
+
+
+
+
+
+

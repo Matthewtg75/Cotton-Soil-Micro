@@ -29,8 +29,8 @@ ncbi_lineage_df <-cbind(ncbi_lineage)
 ncbi_lineage_df$sseqid <- unique_sseqid
 
 # select just which lineage level to keep
-ncbi_lineage_df <- dplyr::select(ncbi_lineage_df, sseqid, query, superkingdom, phylum, class, order, family, genus, species)
+ncbi_lineage_df <- dplyr::select(ncbi_lineage_df, sseqid, query, kingdom, phylum, class, order, family, genus, species)
 ncbi_lineage_df <- left_join(blastn_taxa_top, ncbi_lineage_df, by = "sseqid")
 
 # save annotated blast data frame
-write.csv(ncbi_lineage_df, "./syr16S_annotated_ASV_nt_blast.csv")
+write.csv(ncbi_lineage_df, "./soil_16S_withtaxranks_ASV_nt_blast.csv")
