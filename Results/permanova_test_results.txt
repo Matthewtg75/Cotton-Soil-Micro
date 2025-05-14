@@ -1,0 +1,31 @@
+Permanova results
+
+Permutation test for adonis under reduced model
+Terms added sequentially (first to last)
+Blocks:  strata 
+Permutation: free
+Number of permutations: 999
+
+adonis2(formula = bray_dist ~ Irrigation * Tillage, data = metadata, permutations = 999, strata = County)
+                   Df SumOfSqs      R2      F Pr(>F)
+Irrigation          1   0.2569 0.05815 1.0467  0.249
+Tillage             1   0.2174 0.04920 0.8856  0.605
+Irrigation:Tillage  1   0.2618 0.05926 1.0667  0.212
+Residual           15   3.6818 0.83338              
+Total              18   4.4179 1.00000 
+
+
+
+Permutation test for adonis under reduced model
+Terms added sequentially (first to last)
+Blocks:  strata 
+Permutation: free
+Number of permutations: 999
+
+adonis2(formula = jaccard_dist ~ Irrigation * Tillage, data = metadata, permutations = 999, strata = County)
+                   Df SumOfSqs      R2      F Pr(>F)
+Irrigation          1   0.3923 0.05831 1.0538  0.207
+Tillage             1   0.3659 0.05438 0.9828  0.502
+Irrigation:Tillage  1   0.3853 0.05727 1.0350  0.196
+Residual           15   5.5841 0.83003              
+Total              18   6.7275 1.00000 
