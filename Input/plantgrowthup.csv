@@ -1,0 +1,20 @@
+Genus,PGR,Drought Resistance,Relevant papers,Quotes/Notes
+Neobacillus,Y,Y,https://doi.org/10.1016/j.stress.2023.100318,
+Priestia,Y,N,https://doi.org/10.3389/fpls.2022.1046181,
+Sphingomonas,Y,Y,https://doi.org/10.1080/07388551.2019.1709793,
+Solirubrobacter,Y,N,https://doi.org/10.1111/1462-2920.16685,
+Bradyrhizobium,Y,Y,https://doi.org/10.1007/s42770-020-00375-1,
+Achromobacter,Y,N,https://doi.org/10.1111/1758-2229.12987,
+Pseudarthrobacter,M,N,https://doi.org/10.3390/bacteria1040015,
+Pseudonocardia,N,N,https://doi.org/10.1111/jam.15271,
+Gaiella,Y,Y,https://doi.org/10.1007/s11274-023-03702-4,"""This fascinating phenomenon has been studied mainly by biochemical, physiological, and various “omics” methods, but microbiome analysis has not yet been performed. "" : "
+Microvirga,M,N,https://doi.org/10.3390/microorganisms7090354,
+Nitrospira,Y,N,https://doi.org/10.1002/jobm.202000485,Nitrogen fixers
+Tumebacillus,Y,N,https://doi.org/10.3389/fmicb.2022.910644,Possibly increase metabolites 
+nocardioides ,Y,N,https://doi.org/10.1099/ijsem.0.006407,
+Phenylobacterium,N,N,https://doi.org/10.1007/0-387-30745-1_13,Breakdown pesticides? Use as source of nutrients?
+Conexibacter,N,N,https://doi.org/10.1099/ijs.0.036095-0,"Found in weid places, caves stalactites, pill bug excrement, forest soil, field in japan"
+Niallia,Y,N,https://doi.org/10.1016/j.rhisph.2025.101049,nitrogen fixing capabilities
+Streptomyces,Y,N,https://doi.org/10.1007/s00253-018-09577-y,"Lots of stuff, antibacterial, antimicrobial, plant growth regulator "
+Mycobacterium,Y,Y,https://doi.org/10.14719/pst.2021.8.1.965,"Rice helped in nitrogen fixing, found in drought prone areas and helped plant growth- "" Available reports suggest that the beneficial native rhizospheric bacteria that colonize
+in the plant roots resulted in the production of growth promoting hormones and some essential micronutrients which help the rice plants to survive and also help to avoid the period of adverse environment"""
