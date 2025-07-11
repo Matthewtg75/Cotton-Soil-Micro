@@ -1,16 +1,20 @@
 
 ####Hello this is my help with Sophie on 6/18/25#####
  ####Getting set up######
-#make sure to open the R environment from the microbiome "completed_pipeline.RData
+#make sure to open the R environment from the microbiome "completed_pipeline.RData in the environment part
 setwd("~/Documents/GitHub/Cotton-Soil-Micro/Input")
 read.csv("./plantgrowthup.csv")
 PlantGrowth= read.csv("./plantgrowthup.csv")
+library(tidyverse)
+
 
 ######## looking to make the table in long format######
 ##Making a merge
 Pbarfunc = merge(PlantGrowth[,c(1,2,3)],pseq_barplot_slice, all.y = TRUE)
 
-Pbarpgr = Pbarfunc %>%group_by(PGR)%>%summarise(Csum= sum(cumulative_sums))
+Pbarpgr = Pbarfunc %>%
+  group_by(PGR) %>%
+  summarise(Csum= sum(cumulative_sums))
 
 ##Making a new long data frame
 Pbarfunc = merge(PlantGrowth[,c(1,2,3)],pseq_barplot_slice, all.y = TRUE)
@@ -45,6 +49,10 @@ Pbarpgr= Pbarpgr%>%
 #PGR "Y"+ Irrigation "D" rf = 93.556741
 #PGR "Y"+ Irrigation "I" rf = 95.469424
 
+#Look at this numbers and see if theres a diff with the drought resisstance and the irrgations 
+#future task to be done
+
+
 #####Graphing possible####
 library(ggplot2)
 
@@ -54,11 +62,13 @@ Pbarpgrup = Pbarpgr
 ggplot(data = Pbarpgr, aes(x = Irrigation, y = rf, fill = Irrigation)) +
   geom_boxplot()
 
-ggplot(data = Pbarpgr, aes(x = Irrigation, y = rf, fill = Irrigation)) +
+ggplot(data = Pbarpgr, aes(x = Irrigation, y = rf)) +
   geom_boxplot()+
   labs(title = "PGR and Irrigation", x="Irrigation", y="Proportion Found")+
   scale_x_discrete(labels=c("Non-Irrigated", "Irrigated"))+
-  theme_classic()
+  theme_classic()+
+  theme(legend.position = "none")
+  
 ###Doesnt look like much :( Sad ######   
 
 ######Chi square and fisher test#####

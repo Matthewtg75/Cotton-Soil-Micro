@@ -324,6 +324,18 @@ pdata_rr <- transform_sample_counts(pdata_rr, function(x){ x * 11940})
 ```
 
 
+######This is where I am testing if a lower threshold is changing results#####
+```{Testing if I lower the loss to 0 if it changes how the results look}
+
+sample_loss %>% filter(Sample_size < 7397.0) #0 percent
+
+pdata_rr_0_cut <- phyloseq_mult_raref_avg(p_data.clean, SampSize = 7396, iter=1000, parallel = TRUE,verbose = TRUE)
+
+pdata_rr_0_cut <- transform_sample_counts(pdata_rr, function(x){ x * 7396})
+
+```
+#looking at 0% loss there was no change to significance#
+
 The phyloseq_mult_raref_avg function removes the "Refseq" component of the phyloseq object. I will put it back to the phyloseq object, so that it can be used in downstream analysis
 
 ```{r add-back-sequences}
