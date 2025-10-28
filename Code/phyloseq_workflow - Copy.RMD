@@ -452,10 +452,10 @@ p1 <- ggplot(plot_data, aes(x = MDS1, y = MDS2, color = Irrigation, shape = Till
     y = paste0("MDS2 (", var_explained[2], "%)"),
     color = "Irrigation",
     shape = "Tillage",
-    title = "Irrigation and Tillage does not affect the Microbiome",
+    title = "Irrigation does not affect the microbiome",
     caption = "<i>F<sub>2</sub></i>=1.0467, df=1,18, p-value=<b>0.249</b>"
   ) +
-  theme_minimal() + theme(legend.text = element_text(size = 15), legend.title = element_text(size = 20), plot.title = element_text(size = 25, hjust = 0.5), element_markdown(),  
+  theme_minimal() + theme(legend.text = element_text(size = 14), legend.title = element_text(size = 14), plot.title = element_markdown(), 
                           plot.caption = element_markdown()) +
   scale_shape_manual(values= 15:17) +
   ggside::geom_xsideboxplot(aes(fill = Irrigation, y = Irrigation, group = Irrigation), orientation = "y", show.legend = FALSE) +
@@ -466,7 +466,7 @@ p1 <- ggplot(plot_data, aes(x = MDS1, y = MDS2, color = Irrigation, shape = Till
   scale_fill_brewer(palette = "Set2")
 
 
-ggsave("~/GitHub/Cotton-Soil-Micro/Results/Figures/PCoA_update.pdf", height = 12, width = 18)
+ggsave("../Results/Figures/PCoA.pdf", height = 12, width = 18)
 ```
 
 
@@ -508,7 +508,7 @@ ggplot(data_combined, aes(x = sample, y = count, fill = Genus)) +
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
 panel.background = element_blank())
-#,strip.text = element_text(face = "italic", size = 14), legend.text = element_markdown(size = 15), legend.title = element_markdown(size = 20)) +
+#,strip.text = element_text(face = "italic", size = 14), legend.text = element_markdown(size = 14), legend.title = element_markdown(size = 14)) +
 #  scale_fill_manual(values = c("Wolbachia" = "#009E73", "Holzapfelia" = "black", "Gilliamella" = "#CC79A7", "Unknown" = "lightgrey", "other" = "darkgrey"),
 #  labels = c("<i>Wolbachia</i>","<i>Holzapfelia</i>","<i>Gilliamella</i>","Unknown","Other"))  # Customize fill colors
 ```

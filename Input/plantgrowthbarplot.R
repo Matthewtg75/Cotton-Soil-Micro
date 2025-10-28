@@ -67,7 +67,7 @@ ggplot(data = Pbarpgr, aes(x = Irrigation, y = rf)) +
   labs(title = "PGR and Irrigation", x="Irrigation", y="Proportion Found")+
   scale_x_discrete(labels=c("Non-Irrigated", "Irrigated"))+
   theme_classic()+
-  theme(legend.position = "none")
+  theme( plot.title = element_text(size = 25, hjust = 0.5), element_markdown(),legend.position = "none")
   
 ###Doesnt look like much :( Sad ######   
 
@@ -88,4 +88,5 @@ fisher.test(table(dat$Irrigation, dat$Csum))
 
 fisher.test(table(dat$rf, dat$PGR))
 
-
+summary(testsq)
+summary(fisher.test)
